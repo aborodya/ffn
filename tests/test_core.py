@@ -29,7 +29,7 @@ def test_to_returns_df():
     actual = data.to_returns()
 
     assert len(actual) == len(data)
-    assert all(np.isnan(actual.ix[0]))
+    assert all(np.isnan(actual.iloc[0]))
     aae(actual['AAPL'][1], -0.019, 3)
     aae(actual['AAPL'][9], -0.022, 3)
     aae(actual['MSFT'][1], -0.011, 3)
@@ -53,7 +53,7 @@ def test_to_log_returns_df():
     actual = data.to_log_returns()
 
     assert len(actual) == len(data)
-    assert all(np.isnan(actual.ix[0]))
+    assert all(np.isnan(actual.iloc[0]))
     aae(actual['AAPL'][1], -0.019, 3)
     aae(actual['AAPL'][9], -0.022, 3)
     aae(actual['MSFT'][1], -0.011, 3)
@@ -203,7 +203,7 @@ def test_merge():
 
 
 def test_calc_inv_vol_weights():
-    prc = df.ix[0:11]
+    prc = df.iloc[0:11]
     rets = prc.to_returns().dropna()
     actual = ffn.core.calc_inv_vol_weights(rets)
 
@@ -218,7 +218,7 @@ def test_calc_inv_vol_weights():
 
 
 def test_calc_mean_var_weights():
-    prc = df.ix[0:11]
+    prc = df.iloc[0:11]
     rets = prc.to_returns().dropna()
     actual = ffn.core.calc_mean_var_weights(rets)
 
@@ -233,7 +233,7 @@ def test_calc_mean_var_weights():
 
 
 def test_calc_erc_weights():
-    prc = df.ix[0:11]
+    prc = df.iloc[0:11]
     rets = prc.to_returns().dropna()
     actual = ffn.core.calc_erc_weights(rets)
 
@@ -248,7 +248,7 @@ def test_calc_erc_weights():
 
 
 def test_calc_total_return():
-    prc = df.ix[0:11]
+    prc = df.iloc[0:11]
     actual = prc.calc_total_return()
 
     assert len(actual) == 3
@@ -594,11 +594,18 @@ def test_set_riskfree_rate():
     r = df.to_returns()
 
     performanceStats = ffn.PerformanceStats(df['MSFT'])
+    groupStats = ffn.GroupStats(df)
+    daily_returns = df['MSFT'].resample('D').last().dropna().pct_change()
 
-    daily_returns = df['MSFT'].pct_change()
     aae(
         performanceStats.daily_sharpe,
         daily_returns.dropna().mean() / (daily_returns.dropna().std()) * (np.sqrt(252)),
+        3
+    )
+
+    aae(
+        performanceStats.daily_sharpe,
+        groupStats['MSFT'].daily_sharpe,
         3
     )
 
@@ -608,6 +615,11 @@ def test_set_riskfree_rate():
         monthly_returns.dropna().mean() / (monthly_returns.dropna().std()) * (np.sqrt(12)),
         3
     )
+    aae(
+        performanceStats.monthly_sharpe,
+        groupStats['MSFT'].monthly_sharpe,
+        3
+    )
 
     yearly_returns = df['MSFT'].resample('A').last().pct_change()
     aae(
@@ -615,8 +627,14 @@ def test_set_riskfree_rate():
         yearly_returns.dropna().mean() / (yearly_returns.dropna().std()) * (np.sqrt(1)),
         3
     )
+    aae(
+        performanceStats.yearly_sharpe,
+        groupStats['MSFT'].yearly_sharpe,
+        3
+    )
 
     performanceStats.set_riskfree_rate(0.02)
+    groupStats.set_riskfree_rate(0.02)
 
     daily_returns = df['MSFT'].pct_change()
     aae(
@@ -624,6 +642,12 @@ def test_set_riskfree_rate():
         np.mean(daily_returns.dropna() - 0.02/252)/ (daily_returns.dropna().std()) * (np.sqrt(252)),
         3
     )
+    aae(
+        performanceStats.daily_sharpe,
+        groupStats['MSFT'].daily_sharpe,
+        3
+    )
+
 
     monthly_returns = df['MSFT'].resample('M').last().pct_change()
     aae(
@@ -631,11 +655,21 @@ def test_set_riskfree_rate():
         np.mean(monthly_returns.dropna() - 0.02/12) / (monthly_returns.dropna().std()) * (np.sqrt(12)),
         3
     )
+    aae(
+        performanceStats.monthly_sharpe,
+        groupStats['MSFT'].monthly_sharpe,
+        3
+    )
 
     yearly_returns = df['MSFT'].resample('A').last().pct_change()
     aae(
         performanceStats.yearly_sharpe,
         np.mean(yearly_returns.dropna() - 0.02/1) / (yearly_returns.dropna().std()) * (np.sqrt(1)),
+        3
+    )
+    aae(
+        performanceStats.yearly_sharpe,
+        groupStats['MSFT'].yearly_sharpe,
         3
     )
 
@@ -647,12 +681,18 @@ def test_set_riskfree_rate():
     rf = 100*np.cumprod(1+pd.Series(data=rf, index=df.index, name='rf'))
 
     performanceStats.set_riskfree_rate(rf)
+    groupStats.set_riskfree_rate(rf)
 
     daily_returns = df['MSFT'].pct_change()
     rf_daily_returns = rf.pct_change()
     aae(
         performanceStats.daily_sharpe,
         np.mean(daily_returns-rf_daily_returns) / (daily_returns.dropna().std()) * (np.sqrt(252)),
+        3
+    )
+    aae(
+        performanceStats.daily_sharpe,
+        groupStats['MSFT'].daily_sharpe,
         3
     )
 
@@ -663,6 +703,11 @@ def test_set_riskfree_rate():
         np.mean(monthly_returns-rf_monthly_returns) / (monthly_returns.dropna().std()) * (np.sqrt(12)),
         3
     )
+    aae(
+        performanceStats.monthly_sharpe,
+        groupStats['MSFT'].monthly_sharpe,
+        3
+    )
 
     yearly_returns = df['MSFT'].resample('A').last().pct_change()
     rf_yearly_returns = rf.resample('A').last().pct_change()
@@ -671,12 +716,106 @@ def test_set_riskfree_rate():
         np.mean(yearly_returns-rf_yearly_returns) / (yearly_returns.dropna().std()) * (np.sqrt(1)),
         3
     )
+    aae(
+        performanceStats.yearly_sharpe,
+        groupStats['MSFT'].yearly_sharpe,
+        3
+    )
 
 def test_performance_stats():
     ps = ffn.PerformanceStats(df['AAPL'])
 
+    num_stats = len(ps.stats.keys())
+    num_unique_stats = len(ps.stats.keys().drop_duplicates())
+    assert(num_stats == num_unique_stats)
+
 def test_group_stats_calc_stats():
-    stats = df.calc_stats()
+    gs = df.calc_stats()
+
+    num_stats = len(gs.stats.index)
+    num_unique_stats = len(gs.stats.index.drop_duplicates())
+    assert (num_stats == num_unique_stats)
+
+
+def test_resample_returns():
+    num_years = 30
+    num_months = num_years*12
+    np.random.seed(0)
+    returns = np.random.normal(loc=0.06/12,scale=0.20/np.sqrt(12),size=num_months)
+    returns = pd.Series(returns)
+
+    sample_mean = np.mean(returns)
+
+    sample_stats = ffn.resample_returns(
+        returns,
+        np.mean,
+        seed=0,
+        num_trials=100
+    )
+
+    resampled_mean = np.mean(sample_stats)
+    std_resampled_means = np.std(sample_stats,ddof=1)
+
+    # resampled statistics should be within 3 std devs of actual
+    assert ( np.abs((sample_mean - resampled_mean)/std_resampled_means) < 3)
+
+    np.random.seed(0)
+    returns = np.random.normal(loc=0.06 / 12, scale=0.20 / np.sqrt(12), size=num_months * 3).reshape(num_months,3)
+    returns = pd.DataFrame(returns)
+
+    sample_mean = np.mean(returns, axis=0)
+
+    sample_stats = ffn.resample_returns(
+        returns,
+        lambda x: np.mean(x, axis=0),
+        seed=0,
+        num_trials=100
+    )
+
+    resampled_mean = np.mean(sample_stats)
+    std_resampled_means = np.std(sample_stats, ddof=1)
+
+    # resampled statistics should be within 3 std devs of actual
+    assert np.all(
+        np.abs(
+            (sample_mean - resampled_mean) / std_resampled_means
+        ) < 3
+    )
+
+    returns = df.to_returns().dropna()
+    sample_mean = np.mean(returns, axis=0)
+
+    sample_stats = ffn.resample_returns(
+        returns,
+        lambda x: np.mean(x, axis=0),
+        seed=0,
+        num_trials=100
+    )
+
+    resampled_mean = np.mean(sample_stats)
+    std_resampled_means = np.std(sample_stats, ddof=1)
+
+    assert np.all(
+        np.abs(
+            (sample_mean - resampled_mean) / std_resampled_means
+        ) < 3
+    )
+
+def test_drawdown_details():
+    drawdown = ffn.to_drawdown_series(df['MSFT'])
+    drawdown_details = ffn.drawdown_details(drawdown)
+
+    assert (drawdown_details.loc[drawdown_details.index[1],'Length'] == 18)
+
+    num_years = 30
+    num_months = num_years * 12
+    np.random.seed(0)
+    returns = np.random.normal(loc=0.06 / 12, scale=0.20 / np.sqrt(12), size=num_months)
+    returns = pd.Series(np.cumprod(1+returns))
+
+    drawdown = ffn.to_drawdown_series(returns)
+    drawdown_details = ffn.drawdown_details(drawdown,index_type=drawdown.index)
+
 
 
 
