@@ -1149,7 +1149,13 @@ def to_drawdown_series(prices):
     drawdown[np.isnan(drawdown)] = -np.Inf
 
     # Rolling maximum
-    roll_max = np.maximum.accumulate(drawdown)
+    if isinstance(drawdown, pd.DataFrame):
+        roll_max = pd.DataFrame()
+        for col in drawdown:
+            roll_max[col] = np.maximum.accumulate(drawdown[col])
+    else:
+        roll_max = np.maximum.accumulate(drawdown)
+
     drawdown = drawdown / roll_max - 1.
     return drawdown
 
@@ -1264,7 +1270,7 @@ def calc_sharpe(returns, rf=0., nperiods=None, annualize=True):
         raise Exception('Must provide nperiods if rf != 0')
 
     er = returns.to_excess_returns(rf, nperiods=nperiods)
-    std = np.std(returns, ddof=1)
+    std = np.std(er, ddof=1)
     res = np.divide(er.mean(), std)
 
     if annualize:
@@ -2152,7 +2158,7 @@ def calc_sortino_ratio(returns, rf=0., nperiods=None, annualize=True):
 
     er = returns.to_excess_returns(rf, nperiods=nperiods)
 
-    negative_returns = np.minimum(returns[1:], 0.)
+    negative_returns = np.minimum(er[1:], 0.)
     std = np.std(negative_returns, ddof=1)
     res = np.divide(er.mean(), std)
 
@@ -2297,8 +2303,10 @@ def extend_pandas():
     PandasObject.to_monthly = to_monthly
     PandasObject.asfreq_actual = asfreq_actual
     PandasObject.drop_duplicate_cols = drop_duplicate_cols
+    PandasObject.calc_information = calc_information_ratio
     PandasObject.calc_information_ratio = calc_information_ratio
     PandasObject.calc_prob_mom = calc_prob_mom
+    PandasObject.calc_risk_return = calc_risk_return_ratio
     PandasObject.calc_risk_return_ratio = calc_risk_return_ratio
     PandasObject.calc_erc_weights = calc_erc_weights
     PandasObject.calc_inv_vol_weights = calc_inv_vol_weights
@@ -2311,9 +2319,12 @@ def extend_pandas():
     PandasObject.rollapply = rollapply
     PandasObject.winsorize = winsorize
     PandasObject.rescale = rescale
+    PandasObject.calc_sortino = calc_sortino_ratio
     PandasObject.calc_sortino_ratio = calc_sortino_ratio
+    PandasObject.calc_calmar = calc_calmar_ratio
     PandasObject.calc_calmar_ratio = calc_calmar_ratio
     PandasObject.calc_sharpe = calc_sharpe
+    PandasObject.calc_sharpe_ratio = calc_sharpe
     PandasObject.to_excess_returns = to_excess_returns
     PandasObject.to_ulcer_index = to_ulcer_index
     PandasObject.to_ulcer_performance_index = to_ulcer_performance_index
