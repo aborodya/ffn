@@ -21,7 +21,14 @@ from . import utils
 from .utils import fmtn, fmtp, fmtpn, get_freq_name
 
 _PANDAS_TWO = Version(pd.__version__) >= Version("2")
+_PANDAS_TWO_TWO = Version(pd.__version__) >= Version("2.2")
 
+if _PANDAS_TWO_TWO:
+    _MonthEnd = "ME"
+    _YearEnd = "YE"
+else:
+    _MonthEnd = "M"
+    _YearEnd = "Y"
 
 # module level variable, can be different for non traditional markets (eg. crypto - 360)
 TRADING_DAYS_PER_YEAR = 252
@@ -188,9 +195,9 @@ class PerformanceStats(object):
         #  if months or years are missing then we will need .dropna() too
         self.daily_prices = self.daily_prices.dropna()
         # M = month end frequency
-        self.monthly_prices = obj.resample("M").last()  # .dropna()
+        self.monthly_prices = obj.resample(_MonthEnd).last()  # .dropna()
         # A == year end frequency
-        self.yearly_prices = obj.resample("A").last()  # .dropna()
+        self.yearly_prices = obj.resample(_YearEnd).last()  # .dropna()
 
         # let's save some typing
         dp = self.daily_prices
@@ -229,7 +236,7 @@ class PerformanceStats(object):
             self.best_day = r.max()
             self.worst_day = r.min()
 
-        self.total_return = obj[-1] / obj[0] - 1
+        self.total_return = obj.iloc[-1] / obj.iloc[0] - 1
 
         self.cagr = calc_cagr(dp)
         self.incep = self.cagr
@@ -272,7 +279,7 @@ class PerformanceStats(object):
                 self.monthly_sortino = calc_sortino_ratio(mr, rf=self.rf, nperiods=12)
             # rf is a price series
             else:
-                _rf_monthly_price_returns = self.rf.resample("M").last().to_returns()
+                _rf_monthly_price_returns = self.rf.resample(_MonthEnd).last().to_returns()
                 self.monthly_sharpe = mr.calc_sharpe(rf=_rf_monthly_price_returns, nperiods=12)
                 self.monthly_sortino = calc_sortino_ratio(mr, rf=_rf_monthly_price_returns, nperiods=12)
             self.best_month = mr.max()
@@ -305,7 +312,7 @@ class PerformanceStats(object):
             # add first month
             fidx = mr.index[0]
             try:
-                self.return_table[fidx.year][fidx.month] = float(mp[0]) / dp[0] - 1
+                self.return_table[fidx.year][fidx.month] = float(mp.iloc[0]) / dp.iloc[0] - 1
             except ZeroDivisionError:
                 self.return_table[fidx.year][fidx.month] = 0
             # calculate the YTD values
@@ -319,7 +326,7 @@ class PerformanceStats(object):
 
             denom = dp[: dp.index[-1] - pd.DateOffset(months=3)]
             if len(denom) > 0:
-                self.three_month = dp[-1] / denom[-1] - 1
+                self.three_month = dp.iloc[-1] / denom.iloc[-1] - 1
 
         if r.index.to_series().diff().min() < pd.Timedelta("32 days"):
             if len(mr) < 4:
@@ -338,7 +345,7 @@ class PerformanceStats(object):
             denom = dp[: dp.index[-1] - pd.DateOffset(months=6)]
 
             if len(denom) > 0:
-                self.six_month = dp[-1] / denom[-1] - 1
+                self.six_month = dp.iloc[-1] / denom.iloc[-1] - 1
 
         # Will calculate yearly figures only if the input data has at least yearly frequency or higher (e.g monthly)
         # Rather < 367 days than <= 366 days in case of data taken at different hours of the days
@@ -352,7 +359,7 @@ class PerformanceStats(object):
             denom = dp[: dp.index[-1] - pd.DateOffset(years=1)]
 
             if len(denom) > 0:
-                self.one_year = dp[-1] / denom[-1] - 1
+                self.one_year = dp.iloc[-1] / denom.iloc[-1] - 1
 
             self.yearly_mean = yr.mean()
             self.yearly_vol = np.std(yr, ddof=1)
@@ -364,7 +371,7 @@ class PerformanceStats(object):
                 self.yearly_sortino = calc_sortino_ratio(yr, rf=self.rf, nperiods=1)
             # rf is a price series
             else:
-                _rf_yearly_price_returns = self.rf.resample("A").last().to_returns()
+                _rf_yearly_price_returns = self.rf.resample(_YearEnd).last().to_returns()
                 if self.yearly_vol > 0:
                     self.yearly_sharpe = yr.calc_sharpe(rf=_rf_yearly_price_returns, nperiods=1)
                 self.yearly_sortino = calc_sortino_ratio(yr, rf=_rf_yearly_price_returns, nperiods=1)
@@ -381,7 +388,7 @@ class PerformanceStats(object):
                 win = 0
                 for i in range(11, len(mr)):
                     tot += 1
-                    if mp[i] / mp[i - 11] > 1:
+                    if mp.iloc[i] / mp.iloc[i - 11] > 1:
                         win += 1
                 self.twelve_month_win_perc = float(win) / tot
 
@@ -1174,7 +1181,7 @@ def rebase(prices, value=100):
     return prices / prices.iloc[0] * value
 
 
-def calc_perf_stats(prices):
+def calc_perf_stats(prices, risk_free_rate=0.0, annualization_factor=252):
     """
     Calculates the performance statistics given an object.
     The object should be a Series of prices.
@@ -1183,9 +1190,11 @@ def calc_perf_stats(prices):
 
     Args:
         * prices (Series): Series of prices
+        * risk_free_rate (float, Series): Annual risk-free rate or risk-free rate price series
+        * annualization_factor (int): Annualizing factor. Default is 252 (trading days)
 
     """
-    return PerformanceStats(prices)
+    return PerformanceStats(prices, rf=risk_free_rate, annualization_factor=annualization_factor)
 
 
 def calc_stats(prices):
@@ -1229,7 +1238,7 @@ def to_drawdown_series(prices):
     drawdown = prices.copy()
 
     # Fill NaN's with previous values
-    drawdown = drawdown.fillna(method="ffill")
+    drawdown = drawdown.ffill()
 
     # Ignore problems with NaN's in the beginning
     drawdown[np.isnan(drawdown)] = -np.Inf
@@ -1253,9 +1262,9 @@ def calc_mtd(daily_prices, monthly_prices):
     else use monthly_prices
     """
     if len(monthly_prices) == 1:
-        return daily_prices[-1] / daily_prices[0] - 1
+        return daily_prices.iloc[-1] / daily_prices.iloc[0] - 1
     else:
-        return daily_prices[-1] / monthly_prices[-2] - 1
+        return daily_prices.iloc[-1] / monthly_prices.iloc[-2] - 1
 
 
 def calc_ytd(daily_prices, yearly_prices):
@@ -1265,9 +1274,9 @@ def calc_ytd(daily_prices, yearly_prices):
     else use yearly_prices
     """
     if len(yearly_prices) == 1:
-        return daily_prices[-1] / daily_prices[0] - 1
+        return daily_prices.iloc[-1] / daily_prices.iloc[0] - 1
     else:
-        return daily_prices[-1] / yearly_prices[-2] - 1
+        return daily_prices.iloc[-1] / yearly_prices.iloc[-2] - 1
 
 
 def calc_max_drawdown(prices):
@@ -1493,7 +1502,7 @@ def to_monthly(series, method="ffill", how="end"):
     Convenience method that wraps asfreq_actual
     with 'M' param (method='ffill', how='end').
     """
-    return series.asfreq_actual("M", method=method, how=how)
+    return series.asfreq_actual(_MonthEnd, method=method, how=how)
 
 
 def asfreq_actual(series, freq, method="ffill", how="end", normalize=False):
@@ -2140,7 +2149,7 @@ def rollapply(data, window, fn):
     Returns:
         * Object of same dimensions as data
     """
-    res = data.copy()
+    res = data.copy().astype(float)
     res[:] = np.nan
     n = len(data)
 
@@ -2245,17 +2254,17 @@ def infer_freq(data):
 
 
 def _whole_periods_str_to_nperiods(freq, annualization_factor=TRADING_DAYS_PER_YEAR):
-    if freq == "Y" or freq == "A":
+    if freq in ("Y", "A"):
         return 1
     if freq == "M":
         return 12
     if freq == "D":
         return annualization_factor
-    if freq == "H":
+    if freq in ("H", "h"):
         return annualization_factor * 24
     if freq == "T":
         return annualization_factor * 24 * 60
-    if freq == "S":
+    if freq in ("S", "s"):
         return annualization_factor * 24 * 60 * 60
     return None
 
@@ -2266,6 +2275,16 @@ def infer_nperiods(data, annualization_factor=TRADING_DAYS_PER_YEAR):
 
     if freq is None:
         return None
+
+    if _PANDAS_TWO_TWO:
+        # pandas 2.2+ compatibility
+        if "min" in freq:
+            freq = freq.replace("min", "T")
+        if "ME" in freq:
+            freq = freq.replace("ME", "M")
+        if "YE" in freq:
+            freq = freq.replace("YE-DEC", "Y")
+            freq = freq.replace("YE", "Y")
 
     if len(freq) == 1:
         return _whole_periods_str_to_nperiods(freq, annualization_factor)
