@@ -20,23 +20,31 @@ jobs:
       matrix:
         python-version: [3.9]
         os: [ubuntu-latest]
-        dependency:
-          - 'pandas>=2.2'
-          - 'pandas<2'
+        pandas_version:
+          - '>=2.2'
+          - '<2'
+        numpy_version:
+          - '<2'
+          - '>=2'
+        exclude:
+          - numpy_version: '>=2'
+            pandas_version: '<2'
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
-        cache-dependency-path: 'setup.py'
+        cache-dependency-path: 'pyproject.toml'
 
     - name: Install dependencies
       run: |
         make develop
-        python -m pip install -U wheel twine setuptools "${{ matrix.dependency }}"
+        python -m pip install -U "numpy${{ matrix.numpy_version }}" "pandas${{ matrix.pandas_version}}"
 
     - name: Test
       run: make test
